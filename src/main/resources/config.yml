@@ -1,0 +1,6 @@
+# Имя УЖЕ СУЩЕСТВУЮЩЕГО мира; плагин не создаёт мир.
+world-name: flat
+level-spacing: 320
+level-count: 12
+level-size: 90
+place-above-ground: true
