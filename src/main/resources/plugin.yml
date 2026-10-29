@@ -1,0 +1,15 @@
+name: Backrooms
+version: 1.0.0
+main: ru.backrooms.BackroomsPlugin
+api-version: '1.21'
+author: YourName
+description: Procedural Backrooms levels for Paper 1.21.4
+commands:
+  br:
+    description: Backrooms administration and travel
+    usage: /br <generate|stop|info|level>
+    permission: backrooms.admin
+permissions:
+  backrooms.admin:
+    description: Access to Backrooms admin commands
+    default: op
