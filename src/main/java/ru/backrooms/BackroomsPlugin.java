@@ -1050,6 +1050,18 @@ public final class BackroomsPlugin extends JavaPlugin implements Listener, Comma
         };
     }
 
+    private Material accentForTheme(int theme) {
+        return switch (theme) {
+            case 1 -> Material.IRON_BLOCK;
+            case 2 -> Material.POLISHED_BLACKSTONE_BRICKS;
+            case 3 -> Material.CUT_COPPER;
+            case 4 -> Material.MOSS_BLOCK;
+            case 5 -> Material.CRYING_OBSIDIAN;
+            default -> Material.BROWN_TERRACOTTA;
+        };
+    }
+
+
     /**
      * Уникальная сигнатура уровня. ВАЖНО: больше НЕ строим сетку столбов —
      * каждый уровень получает узнаваемый, но не заполняющий комнату объект.
