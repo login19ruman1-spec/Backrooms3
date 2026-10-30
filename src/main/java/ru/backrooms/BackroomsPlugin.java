@@ -79,9 +79,12 @@ public final class BackroomsPlugin extends JavaPlugin implements Listener {
             case "level" -> {
                 if (args.length < 2) { player.sendMessage(ChatColor.YELLOW + "Использование: /br level <номер>"); return true; }
                 try {
-                    Location loc = levelSpawns.get(Integer.parseInt(args[1]));
-                    if (loc == null) player.sendMessage(ChatColor.RED + "Уровень не найден. Сначала /br generate.");
-                    else { player.teleport(loc); player.sendMessage(ChatColor.GREEN + "Телепорт на уровень."); }
+                    int requested=Math.max(1,Integer.parseInt(args[1]));
+                    if (requested>generated+1) { player.sendMessage(ChatColor.RED + "Сначала открой предыдущие уровни через переходы. Следующий доступный: "+(generated+1)); return true; }
+                    if (!levelSpawns.containsKey(requested) && requested==generated+1) generateNextLevel(requested);
+                    Location loc=levelSpawns.get(requested);
+                    if (loc==null) player.sendMessage(ChatColor.RED + "Уровень не найден. Сначала /br generate.");
+                    else { player.teleport(loc); player.sendMessage(ChatColor.GREEN + "Телепорт на уровень "+requested+"."); }
                 } catch (NumberFormatException ex) { player.sendMessage(ChatColor.RED + "Номер уровня должен быть числом."); }
             }
             default -> player.sendMessage(ChatColor.YELLOW + "/br generate | stop | info | level <номер>");
@@ -197,10 +200,16 @@ public final class BackroomsPlugin extends JavaPlugin implements Listener {
     private void registerLevelBlocks(Location o, int level) {
         int r=size/2, ox=o.getBlockX(), oy=o.getBlockY(), oz=o.getBlockZ();
         for (int x=-r; x<=r; x++) for (int z=-r; z<=r; z++) {
-            blockLevels.put(key(ox+x,oy,oz+z), level);
-            blockLevels.put(key(ox+x,oy+6,oz+z), level);
-            protectedFloorCeilings.add(key(ox+x,oy,oz+z));
-            protectedFloorCeilings.add(key(ox+x,oy+6,oz+z));
+            String floorKey=key(ox+x,oy,oz+z), ceilingKey=key(ox+x,oy+6,oz+z);
+            blockLevels.put(floorKey, level);
+            blockLevels.put(ceilingKey, level);
+            protectedFloorCeilings.add(floorKey);
+            protectedFloorCeilings.add(ceilingKey);
+            // Register every generated wall block as well; otherwise wall breaking is never detected.
+            for (int y=oy+1; y<oy+6; y++) {
+                Block candidate=world.getBlockAt(ox+x,y,oz+z);
+                if (isWallMaterial(candidate.getType())) blockLevels.put(key(ox+x,y,oz+z),level);
+            }
         }
     }
 
@@ -250,10 +259,11 @@ public final class BackroomsPlugin extends JavaPlugin implements Listener {
         event.setDropItems(false);
         Location origin = levelOrigins.get(level); if (origin == null) return;
         // A broken wall opens a passage and creates a connected room/corridor beyond it.
-        BlockFace face = outwardFace(b, origin);
+        // Expand away from the player, through the wall they just broke.
+        BlockFace face = outwardFaceFromPlayer(b, player);
         b.setType(Material.AIR, false);
         String wallKey = k + ":" + face.name(); if (!expandedWalls.add(wallKey)) return;
-        Location room = b.getLocation().add(face.getModX()*5, 0, face.getModZ()*5);
+        Location room = b.getLocation().add(face.getModX(), 0, face.getModZ());
         buildExpansion(room, level, face);
         player.sendMessage(ChatColor.DARK_PURPLE+"За стеной открылось новое помещение...");
     }
@@ -276,10 +286,12 @@ public final class BackroomsPlugin extends JavaPlugin implements Listener {
         return m.name().contains("CONCRETE") || m.name().contains("TERRACOTTA") || m.name().contains("BRICKS") || m.name().contains("PLANKS") || m == Material.YELLOW_WOOL || m == Material.SMOOTH_SANDSTONE || m == Material.QUARTZ_BLOCK || m == Material.BLACKSTONE || m == Material.DEEPSLATE_TILES;
     }
 
-    private BlockFace outwardFace(Block b, Location o) {
-        int dx=b.getX()-o.getBlockX(), dz=b.getZ()-o.getBlockZ();
-        if (Math.abs(dx)>Math.abs(dz)) return dx>=0 ? BlockFace.EAST : BlockFace.WEST;
-        return dz>=0 ? BlockFace.SOUTH : BlockFace.NORTH;
+    private BlockFace outwardFaceFromPlayer(Block wall, Player player) {
+        double dx=player.getLocation().getX()-wall.getX()-0.5;
+        double dz=player.getLocation().getZ()-wall.getZ()-0.5;
+        // The player is inside; generate on the opposite side of the broken wall.
+        if (Math.abs(dx)>Math.abs(dz)) return dx>=0 ? BlockFace.WEST : BlockFace.EAST;
+        return dz>=0 ? BlockFace.NORTH : BlockFace.SOUTH;
     }
 
     private void buildExpansion(Location edge, int level, BlockFace face) {
@@ -301,6 +313,10 @@ public final class BackroomsPlugin extends JavaPlugin implements Listener {
             if (x==-width/2 || x==width/2 || z==length) for (int y=1;y<6;y++) w.getBlockAt(wx,oy+y,wz).setType(wall,false);
             blockLevels.put(key(wx,oy,wz),level); blockLevels.put(key(wx,oy+6,wz),level);
             protectedFloorCeilings.add(key(wx,oy,wz)); protectedFloorCeilings.add(key(wx,oy+6,wz));
+            for (int yy=1;yy<6;yy++) {
+                Block part=w.getBlockAt(wx,oy+yy,wz);
+                if (isWallMaterial(part.getType())) blockLevels.put(key(wx,oy+yy,wz),level);
+            }
         }
         // Doors at the far end lead to the next generated room when opened/walked through.
         int ex=ox+face.getModX()*length, ez=oz+face.getModZ()*length;
@@ -318,6 +334,19 @@ public final class BackroomsPlugin extends JavaPlugin implements Listener {
         upper.setFacing(facing); upper.setHalf(org.bukkit.block.data.Bisected.Half.TOP); top.setBlockData(upper,false);
     }
 
+
+    private void generateNextLevel(int target) {
+        if (world==null || target!=generated+1 || levelSpawns.containsKey(target)) return;
+        int index=target-1, x=1000+(index%4)*spacing, z=1000+(index/4)*spacing;
+        int y=world.getHighestBlockYAt(x,z)+2;
+        Location origin=new Location(world,x,y,z);
+        buildLevel(origin,target,Theme.values()[index%Theme.values().length]);
+        registerLevelBlocks(origin,target);
+        levelOrigins.put(target,origin.clone());
+        levelSpawns.put(target,origin.clone().add(0,1,0));
+        generated++;
+    }
+
     private String key(int x,int y,int z) { return x+":"+y+":"+z; }
     @EventHandler public void onMove(PlayerMoveEvent event) {
         if (event.getTo()==null || (event.getFrom().getBlockX()==event.getTo().getBlockX() && event.getFrom().getBlockY()==event.getTo().getBlockY() && event.getFrom().getBlockZ()==event.getTo().getBlockZ())) return;
@@ -326,10 +355,8 @@ public final class BackroomsPlugin extends JavaPlugin implements Listener {
         if (target==null) target=portalTargets.get(key(event.getTo().getBlockX(),event.getTo().getBlockY(),event.getTo().getBlockZ()));
         if (target==null) return; Location destination=levelSpawns.get(target);
         if (destination==null && target==generated+1 && world!=null) {
-            int index=target-1, x=1000+(index%4)*spacing, z=1000+(index/4)*spacing;
-            int y=world.getHighestBlockYAt(x,z)+2; Location origin=new Location(world,x,y,z);
-            buildLevel(origin,target,Theme.values()[index%Theme.values().length]); registerLevelBlocks(origin,target);
-            levelOrigins.put(target,origin.clone()); levelSpawns.put(target,origin.clone().add(0,1,0)); generated++; destination=levelSpawns.get(target);
+            generateNextLevel(target);
+            destination=levelSpawns.get(target);
         }
         if (destination==null) return;
         portalCooldown.add(p.getUniqueId()); p.teleport(destination); p.sendMessage(ChatColor.LIGHT_PURPLE+"Переход на уровень "+target);
