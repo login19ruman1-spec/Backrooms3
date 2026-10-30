@@ -5,9 +5,9 @@ api-version: '1.21'
 author: YourName
 description: Procedural Backrooms levels for Paper 1.21.4
 commands:
-  br:
+   backrooms:
     description: Backrooms administration and travel
-    usage: /br <generate|stop|info|level>
+    usage: /backrooms <generate|stop|info|level>
     permission: backrooms.admin
 permissions:
   backrooms.admin:
