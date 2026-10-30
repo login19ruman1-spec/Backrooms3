@@ -1,6 +1,13 @@
-# Имя УЖЕ СУЩЕСТВУЮЩЕГО мира; плагин не создаёт мир.
 world-name: flat
-level-spacing: 320
-level-count: 12
-level-size: 90
-place-above-ground: true
+origin-x: 0
+origin-z: 0
+level-spacing: 4096
+floor-y: 60
+ceiling-y: 68      # базовая высота; реальная = 68..74 (офсет 0..6)
+generation-enabled: false
+clones:
+  enabled: true
+  auto-track-players: true
+  max-npcs: 16
+  spawn-radius-chunks: 12
+  names: []
